@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>File & Camera Input Demo</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --accent: #38bdf8;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+    }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at 20% 20%, #1f2937 0, #0b1120 50%), radial-gradient(circle at 80% 0, #1e293b 0, #0b1120 40%), var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .panel {
+      width: min(960px, 100%);
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+    }
+    h1 { margin-top: 0; letter-spacing: 0.02em; }
+    section { margin-top: 24px; }
+    button {
+      appearance: none;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 18px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #0b1120;
+      background: var(--accent);
+      cursor: pointer;
+      transition: transform 120ms ease, box-shadow 120ms ease;
+      box-shadow: 0 10px 30px rgba(56, 189, 248, 0.28);
+    }
+    button:active { transform: translateY(1px); box-shadow: 0 8px 18px rgba(56,189,248,0.28); }
+    .stack { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .small { font-size: 13px; color: var(--muted); }
+    .output { margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background: rgba(255,255,255,0.04); padding: 12px; border-radius: 12px; }
+    video { width: 100%; max-height: 320px; background: #020617; border-radius: 12px; margin-top: 12px; }
+    canvas { width: 100%; max-height: 360px; background: #020617; border-radius: 12px; margin-top: 12px; cursor: crosshair; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>ファイル選択＆カメラ起動サンプル</h1>
+    <p class="small">要件: (1) ボタンでファイル選択ダイアログを開く (2) ボタンでカメラを起動する。他の実装オプションも併記。</p>
+
+    <section>
+      <h2>1. 隠し input[type=file] をボタンから起動</h2>
+      <div class="stack">
+        <button id="btn-file">ファイルを選択</button>
+        <span class="small">PC/モバイル共通。複数選択可。</span>
+      </div>
+      <input id="file-input" type="file" hidden multiple />
+      <div id="file-output" class="output small">未選択</div>
+    </section>
+
+    <section>
+      <h2>2. File System Access API (対応ブラウザ限定)</h2>
+      <div class="stack">
+        <button id="btn-picker">showOpenFilePicker を試す</button>
+        <span class="small">Chrome 86+/Edge/Android など対応のみ。HTTPS 環境が必要。</span>
+      </div>
+      <div id="picker-output" class="output small">未実行</div>
+    </section>
+
+    <section>
+      <h2>3. カメラ起動 - input capture 属性 (モバイル向け)</h2>
+      <div class="stack">
+        <button id="btn-camera-file">カメラで撮影して選択</button>
+        <span class="small">`accept="image/*" capture="environment"` でモバイルのカメラを起動する実装。</span>
+      </div>
+      <input id="camera-file" type="file" accept="image/*" capture="environment" hidden />
+      <div id="camera-file-output" class="output small">未選択</div>
+    </section>
+
+    <section>
+      <h2>4. カメラ起動 - getUserMedia (ブラウザ内プレビュー)</h2>
+      <div class="stack">
+        <button id="btn-start-camera">カメラを起動</button>
+        <button id="btn-stop-camera" style="background:#f87171;color:#0f172a">停止</button>
+        <span class="small">デスクトップ/モバイル両対応。HTTPS または localhost が必須。</span>
+      </div>
+      <video id="video" playsinline muted></video>
+      <div id="camera-status" class="small" style="margin-top:8px;">停止中</div>
+    </section>
+
+    <section>
+      <h2>5. getUserMedia で撮影 → Canvas で加工（回転・塗りつぶし）</h2>
+      <div class="stack">
+        <button id="btn-snapshot">スナップショット</button>
+        <button id="btn-rotate">90°回転</button>
+        <button id="btn-fill" style="background:#a78bfa;color:#0b1120">色で塗りつぶし</button>
+        <label class="small">色 <input id="fill-color" type="color" value="#22d3ee" style="vertical-align:middle"></label>
+        <span class="small">4 のプレビューを基に静止画を取得し加工します。キャンバス上をドラッグすると指定範囲だけ塗りつぶせます。</span>
+      </div>
+      <canvas id="snapshot" aria-label="snapshot canvas"></canvas>
+      <div id="snapshot-status" class="small" style="margin-top:8px;">まだ撮影していません</div>
+    </section>
+
+    <section>
+      <h2>6. 加工済み画像を API に送信する例（エンドポイント未設定）</h2>
+      <div class="stack">
+        <button id="btn-upload" style="background:#34d399;color:#0b1120">FormData で送信 (POST)</button>
+        <button id="btn-json" style="background:#fcd34d;color:#0b1120">Base64 を JSON で送信</button>
+        <button id="btn-download" style="background:#f472b6;color:#0b1120">PNG をダウンロード</button>
+        <span class="small">送信先 URL を設定してからご利用ください。デフォルトでは送信しません。</span>
+      </div>
+      <div id="upload-status" class="output small">送信先 URL が未設定です。</div>
+    </section>
+  </div>
+
+  <script>
+    // 1) Basic hidden file input
+    const fileBtn = document.getElementById('btn-file');
+    const fileInput = document.getElementById('file-input');
+    const fileOutput = document.getElementById('file-output');
+    fileBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      if (!fileInput.files || fileInput.files.length === 0) {
+        fileOutput.textContent = '未選択';
+        return;
+      }
+      const names = Array.from(fileInput.files).map(f => `${f.name} (${Math.round(f.size/1024)} KB)`);
+      fileOutput.textContent = names.join(', ');
+    });
+
+    // 2) File System Access API (optional)
+    const pickerBtn = document.getElementById('btn-picker');
+    const pickerOutput = document.getElementById('picker-output');
+    pickerBtn.addEventListener('click', async () => {
+      if (!window.showOpenFilePicker) {
+        pickerOutput.textContent = 'このブラウザは showOpenFilePicker に未対応。';
+        return;
+      }
+      try {
+        const handles = await window.showOpenFilePicker({ multiple: true });
+        const names = await Promise.all(handles.map(async (handle) => {
+          const file = await handle.getFile();
+          return `${file.name} (${Math.round(file.size/1024)} KB)`;
+        }));
+        pickerOutput.textContent = names.join(', ');
+      } catch (err) {
+        pickerOutput.textContent = err.name === 'AbortError' ? 'ユーザーがキャンセルしました。' : `エラー: ${err.message}`;
+      }
+    });
+
+    // 3) Mobile camera via capture attribute
+    const cameraFileBtn = document.getElementById('btn-camera-file');
+    const cameraFileInput = document.getElementById('camera-file');
+    const cameraFileOutput = document.getElementById('camera-file-output');
+    cameraFileBtn.addEventListener('click', () => cameraFileInput.click());
+    cameraFileInput.addEventListener('change', () => {
+      if (!cameraFileInput.files || cameraFileInput.files.length === 0) {
+        cameraFileOutput.textContent = '未選択';
+        return;
+      }
+      const photo = cameraFileInput.files[0];
+      cameraFileOutput.textContent = `撮影: ${photo.name} (${Math.round(photo.size/1024)} KB)`;
+    });
+
+    // 4) getUserMedia streaming
+    const startBtn = document.getElementById('btn-start-camera');
+    const stopBtn = document.getElementById('btn-stop-camera');
+    const video = document.getElementById('video');
+    const statusEl = document.getElementById('camera-status');
+    let stream;
+
+    startBtn.addEventListener('click', async () => {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        statusEl.textContent = 'getUserMedia 未対応のブラウザです。';
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        video.srcObject = stream;
+        await video.play();
+        statusEl.textContent = 'カメラ起動中';
+      } catch (err) {
+        statusEl.textContent = err.name === 'NotAllowedError' ? 'カメラ許可が拒否されました。' : `エラー: ${err.message}`;
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      if (!stream) return;
+      stream.getTracks().forEach(t => t.stop());
+      video.pause();
+      video.srcObject = null;
+      statusEl.textContent = '停止中';
+      stream = null;
+    });
+
+    // 5) Capture frame and post-process on canvas
+    const snapshotBtn = document.getElementById('btn-snapshot');
+    const rotateBtn = document.getElementById('btn-rotate');
+    const fillBtn = document.getElementById('btn-fill');
+    const fillColor = document.getElementById('fill-color');
+    const snapshotCanvas = document.getElementById('snapshot');
+    const snapStatus = document.getElementById('snapshot-status');
+    const snapCtx = snapshotCanvas.getContext('2d');
+    let hasSnapshot = false;
+    let rotationDeg = 0;
+    let selectionActive = false;
+    let selectionStart = null;
+    let selectionImage = null;
+
+    // Draw any media source onto canvas with rotation while preserving full image
+    function paintToCanvas(source, angleDeg) {
+      const rad = angleDeg * Math.PI / 180;
+      const sin = Math.abs(Math.sin(rad));
+      const cos = Math.abs(Math.cos(rad));
+      const w = source.videoWidth || source.width;
+      const h = source.videoHeight || source.height;
+      if (!w || !h) return false;
+
+      const newW = Math.round(w * cos + h * sin);
+      const newH = Math.round(w * sin + h * cos);
+      snapshotCanvas.width = newW;
+      snapshotCanvas.height = newH;
+
+      snapCtx.save();
+      snapCtx.translate(newW / 2, newH / 2);
+      snapCtx.rotate(rad);
+      snapCtx.drawImage(source, -w / 2, -h / 2, w, h);
+      snapCtx.restore();
+      return true;
+    }
+
+    snapshotBtn.addEventListener('click', () => {
+      if (!video.srcObject || !video.videoWidth) {
+        snapStatus.textContent = '先に「カメラを起動」でプレビューを開始してください。';
+        return;
+      }
+      rotationDeg = 0;
+      hasSnapshot = paintToCanvas(video, rotationDeg);
+      snapStatus.textContent = hasSnapshot ? '静止画を取得しました。' : '取得に失敗しました。';
+    });
+
+    rotateBtn.addEventListener('click', () => {
+      if (!hasSnapshot) {
+        snapStatus.textContent = '先にスナップショットを撮影してください。';
+        return;
+      }
+      rotationDeg = (rotationDeg + 90) % 360;
+
+      // 再度塗りつぶしが乗らないよう、直前のキャンバス画像をソースとして回転
+      const img = new Image();
+      img.onload = () => {
+        paintToCanvas(img, rotationDeg);
+        snapStatus.textContent = `回転: ${rotationDeg}°`;
+      };
+      img.src = snapshotCanvas.toDataURL('image/png');
+    });
+
+    fillBtn.addEventListener('click', () => {
+      if (!hasSnapshot) {
+        snapStatus.textContent = '先にスナップショットを撮影してください。';
+        return;
+      }
+      snapCtx.fillStyle = fillColor.value;
+      snapCtx.globalAlpha = 0.35;
+      snapCtx.fillRect(0, 0, snapshotCanvas.width, snapshotCanvas.height);
+      snapCtx.globalAlpha = 1;
+      snapStatus.textContent = '塗りつぶしを適用しました。';
+    });
+
+    // 塗りつぶしの矩形選択 (ドラッグで範囲指定)
+    function pointerPos(evt) {
+      const rect = snapshotCanvas.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(snapshotCanvas.width, (evt.clientX - rect.left) * (snapshotCanvas.width / rect.width))),
+        y: Math.max(0, Math.min(snapshotCanvas.height, (evt.clientY - rect.top) * (snapshotCanvas.height / rect.height))),
+      };
+    }
+
+    snapshotCanvas.addEventListener('pointerdown', (evt) => {
+      if (!hasSnapshot) {
+        snapStatus.textContent = '先にスナップショットを撮影してください。';
+        return;
+      }
+      selectionActive = true;
+      selectionStart = pointerPos(evt);
+      selectionImage = snapCtx.getImageData(0, 0, snapshotCanvas.width, snapshotCanvas.height);
+      snapshotCanvas.setPointerCapture(evt.pointerId);
+    });
+
+    snapshotCanvas.addEventListener('pointermove', (evt) => {
+      if (!selectionActive) return;
+      const { x, y } = pointerPos(evt);
+      snapCtx.putImageData(selectionImage, 0, 0);
+      const w = x - selectionStart.x;
+      const h = y - selectionStart.y;
+      snapCtx.save();
+      snapCtx.strokeStyle = fillColor.value;
+      snapCtx.lineWidth = 2;
+      snapCtx.setLineDash([6, 4]);
+      snapCtx.strokeRect(selectionStart.x, selectionStart.y, w, h);
+      snapCtx.restore();
+      snapStatus.textContent = 'ドラッグ中: 範囲を確定すると塗りつぶします。';
+    });
+
+    snapshotCanvas.addEventListener('pointerup', (evt) => {
+      if (!selectionActive) return;
+      const { x, y } = pointerPos(evt);
+      selectionActive = false;
+      snapshotCanvas.releasePointerCapture(evt.pointerId);
+
+      const x0 = Math.min(selectionStart.x, x);
+      const y0 = Math.min(selectionStart.y, y);
+      const w = Math.abs(x - selectionStart.x);
+      const h = Math.abs(y - selectionStart.y);
+
+      snapCtx.putImageData(selectionImage, 0, 0);
+      if (w < 4 || h < 4) {
+        snapStatus.textContent = '範囲が小さすぎます。ドラッグして選択してください。';
+        return;
+      }
+
+      snapCtx.fillStyle = fillColor.value;
+      snapCtx.globalAlpha = 0.35;
+      snapCtx.fillRect(x0, y0, w, h);
+      snapCtx.globalAlpha = 1;
+      snapStatus.textContent = `選択範囲を塗りつぶしました (${Math.round(w)}x${Math.round(h)} px)。`;
+    });
+
+    // 6) Send edited canvas to API (demo)
+    const uploadBtn = document.getElementById('btn-upload');
+    const jsonBtn = document.getElementById('btn-json');
+    const downloadBtn = document.getElementById('btn-download');
+    const uploadStatus = document.getElementById('upload-status');
+    const API_URL = ''; // ここにバックエンドの HTTPS エンドポイントを設定する
+
+    function requireSnapshotOrWarn() {
+      if (!hasSnapshot) {
+        uploadStatus.textContent = '先にスナップショットを作成してください。';
+        return false;
+      }
+      return true;
+    }
+
+    // Helper: convert canvas to Blob
+    function canvasToBlob() {
+      return new Promise((resolve, reject) => {
+        snapshotCanvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('toBlob 失敗')), 'image/png', 0.92);
+      });
+    }
+
+    uploadBtn.addEventListener('click', async () => {
+      if (!requireSnapshotOrWarn()) return;
+      if (!API_URL) {
+        uploadStatus.textContent = '送信先 URL を設定してください (API_URL 定数)。';
+        return;
+      }
+      try {
+        const blob = await canvasToBlob();
+        const form = new FormData();
+        form.append('file', blob, 'snapshot.png');
+        form.append('meta', JSON.stringify({ source: 'getUserMedia-demo', takenAt: new Date().toISOString() }));
+
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          body: form,
+        });
+        uploadStatus.textContent = res.ok ? 'FormData を送信しました。' : `送信失敗: ${res.status}`;
+      } catch (err) {
+        uploadStatus.textContent = `エラー: ${err.message}`;
+      }
+    });
+
+    jsonBtn.addEventListener('click', async () => {
+      if (!requireSnapshotOrWarn()) return;
+      if (!API_URL) {
+        uploadStatus.textContent = '送信先 URL を設定してください (API_URL 定数)。';
+        return;
+      }
+      try {
+        const dataUrl = snapshotCanvas.toDataURL('image/png', 0.92);
+        const payload = {
+          imageBase64: dataUrl.replace(/^data:image\/png;base64,/, ''),
+          contentType: 'image/png',
+          note: 'Canvas processed image',
+        };
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        uploadStatus.textContent = res.ok ? 'Base64 JSON を送信しました。' : `送信失敗: ${res.status}`;
+      } catch (err) {
+        uploadStatus.textContent = `エラー: ${err.message}`;
+      }
+    });
+
+    downloadBtn.addEventListener('click', async () => {
+      if (!requireSnapshotOrWarn()) return;
+      const link = document.createElement('a');
+      link.download = 'snapshot.png';
+      link.href = snapshotCanvas.toDataURL('image/png', 0.92);
+      link.click();
+      uploadStatus.textContent = 'PNG をダウンロードしました。';
+    });
+  </script>
+</body>
+</html>
