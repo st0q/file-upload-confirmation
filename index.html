@@ -70,6 +70,16 @@
     </section>
 
     <section>
+      <h2>1.1 フォルダ選択 (webkitdirectory)</h2>
+      <div class="stack">
+        <button id="btn-dir">フォルダを選択</button>
+        <span class="small">Chrome/Edge/Safari などでフォルダ単位の選択を許可。</span>
+      </div>
+      <input id="dir-input" type="file" hidden webkitdirectory multiple />
+      <div id="dir-output" class="output small">未選択</div>
+    </section>
+
+    <section>
       <h2>2. File System Access API (対応ブラウザ限定)</h2>
       <div class="stack">
         <button id="btn-picker">showOpenFilePicker を試す</button>
@@ -129,6 +139,9 @@
     const fileBtn = document.getElementById('btn-file');
     const fileInput = document.getElementById('file-input');
     const fileOutput = document.getElementById('file-output');
+    const dirBtn = document.getElementById('btn-dir');
+    const dirInput = document.getElementById('dir-input');
+    const dirOutput = document.getElementById('dir-output');
     fileBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', () => {
       if (!fileInput.files || fileInput.files.length === 0) {
@@ -137,6 +150,17 @@
       }
       const names = Array.from(fileInput.files).map(f => `${f.name} (${Math.round(f.size/1024)} KB)`);
       fileOutput.textContent = names.join(', ');
+    });
+
+    // 1.1) Directory selection via webkitdirectory
+    dirBtn.addEventListener('click', () => dirInput.click());
+    dirInput.addEventListener('change', () => {
+      if (!dirInput.files || dirInput.files.length === 0) {
+        dirOutput.textContent = '未選択';
+        return;
+      }
+      const names = Array.from(dirInput.files).map(f => `${f.webkitRelativePath} (${Math.round(f.size/1024)} KB)`);
+      dirOutput.textContent = names.join(', ');
     });
 
     // 2) File System Access API (optional)

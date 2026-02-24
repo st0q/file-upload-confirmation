@@ -2,6 +2,7 @@
 
 ## できること
 - ボタン押下でファイル選択ダイアログを開く（隠し `input[type=file]`）
+- `webkitdirectory` 付き file input でフォルダ選択
 - File System Access API の `showOpenFilePicker` を試す（対応ブラウザ限定）
 - モバイル向けにカメラを直接開く `capture` 付き `input`
 - `getUserMedia` でブラウザ内カメラプレビューを開始・停止
